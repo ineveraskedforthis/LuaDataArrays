@@ -1,0 +1,20 @@
+## regenerate examples
+## demonstrates potential integration of this generator into lua project
+
+rule build_exe
+  command = cmd /c "lake build && touch $out"
+
+rule generate
+  command = lake exe leanluadataarrays table $in $out
+
+rule generate_state
+  command = lake exe leanluadataarrays state $out $in
+
+build cache/lean_is_ready : build_exe Main.lean
+
+build ./example/output/location.lua : generate ./example/input/location/name ./example/input/location/desc | cache/lean_is_ready
+build ./example/output/party.lua : generate ./example/input/party/name ./example/input/party/desc | cache/lean_is_ready
+build ./example/output/party_location.lua : generate ./example/input/party_location/name ./example/input/party_location/desc | cache/lean_is_ready
+
+build ./example/output/_state.lua : generate_state ./example/input/location/name ./example/input/location/desc ./example/input/party/name ./example/input/party/desc ./example/input/party_location/name ./example/input/party_location/desc | cache/lean_is_ready
+

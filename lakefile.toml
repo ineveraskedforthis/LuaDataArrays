@@ -1,0 +1,10 @@
+name = "LeanLuaDataArrays"
+version = "0.1.0"
+defaultTargets = ["leanluadataarrays"]
+
+[[lean_lib]]
+name = "LeanLuaDataArrays"
+
+[[lean_exe]]
+name = "leanluadataarrays"
+root = "Main"
