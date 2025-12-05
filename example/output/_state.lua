@@ -1,13 +1,19 @@
 ---@class data_arrays
 ---@field generation_counter_array_location number[]
 ---@field size_location number
+---@field used_location_id number[]
+---@field available_location_id number
 ---@field data_array_location_danger number[]
 ---@field generation_counter_array_party number[]
 ---@field size_party number
+---@field used_party_id number[]
+---@field available_party_id number
 ---@field data_array_party_count number[]
 ---@field generation_counter_array_party_location number[]
 ---@field size_party_location number
----@field data_array_party_location_to_party number[]
----@field data_array_party_location_from_party number[]
+---@field used_party_location_id number[]
+---@field available_party_location_id number
 ---@field data_array_party_location_to_location number[]
----@field data_array_party_location_from_location number[]
+---@field data_array_party_location_one_from_location number[]
+---@field data_array_party_location_to_party number[]
+---@field data_array_party_location_many_from_party (table<number, number>)[]
