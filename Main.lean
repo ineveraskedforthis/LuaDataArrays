@@ -1,6 +1,7 @@
 import Std.Data.HashSet
 
 import LeanLuaDataArrays
+import LeanLuaDataArrays.Lua
 
 def namespace_name (x : String) : String := x.toUpper
 def empty_table : String := "{}"

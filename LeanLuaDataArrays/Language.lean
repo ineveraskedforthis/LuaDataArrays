@@ -222,7 +222,8 @@ def ReserveArraysFunc (data : DataArrays) (table : Table.table) : Instruction :=
     (
       Instruction.program
       [
-        Instruction.reserve_pure_array (data.usage_array table.name) Pure.int32_t (data.size table.name)
+        Instruction.reserve_pure_array (data.usage_array table.name) Pure.int32_t (data.size table.name),
+        Instruction.reserve_pure_array (data.generation_array table.name) Pure.int32_t (data.size table.name)
       ]
     )
 
@@ -234,6 +235,8 @@ def Translate (t: Table.table) (l: Language) : String :=
 
   let l' := l ""
 
+  l' (Instruction.program [ReserveArraysFunc state t])
+  ++
   l' (Instruction.program [IsValidFunc state t.name id])
   ++
   l' (Instruction.program (t.fields.map (AccessFieldFunc state t.name id)))

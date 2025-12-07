@@ -176,15 +176,15 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
     match out_type with
     | SupposedType.pure Pure.data_type.void =>
       ResolveParamTypes params
-      ++ s!"{indent}function {ResolveName name}({ResolveParams params})"
+      ++ s!"{indent}function {ResolveName name}({ResolveParams params})\n"
       ++ Compile tb s!"{indent}{tb}" body
-      ++ s!"end"
+      ++ s!"end\n"
     | _ =>
       ResolveParamTypes params
       ++ s! "---@returns {ConvertTypeLua out_type}"
-      ++ s!"{indent}function {ResolveName name}({ResolveParams params})"
+      ++ s!"{indent}function {ResolveName name}({ResolveParams params})\n"
       ++ Compile tb s!"{indent}{tb}" body
-      ++ s!"end"
+      ++ s!"end\n"
 
   | Instruction.program p => JoinLines (p.map (Compile tb indent))
 
