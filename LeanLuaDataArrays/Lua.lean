@@ -11,9 +11,11 @@ inductive ffi_type where
   | uint8_t : ffi_type
   | uint16_t : ffi_type
   | uint32_t : ffi_type
+  | uint64_t : ffi_type
   | int8_t : ffi_type
   | int16_t : ffi_type
   | int32_t : ffi_type
+  | int64_t : ffi_type
   | float : ffi_type
   | bool : ffi_type
 
@@ -22,9 +24,11 @@ def ffi_type.convert_to_string (x: ffi_type) : String :=
   | uint8_t     => "uint8_t"
   | uint16_t    => "uint16_t"
   | uint32_t    => "uint32_t"
+  | uint64_t    => "uint64_t"
   | int8_t      => "int8_t"
   | int16_t     => "int16_t"
   | int32_t     => "int32_t"
+  | int64_t     => "int64_t"
   | float       => "float"
   | bool        => "bool"
 
@@ -37,9 +41,11 @@ def ffi_type.fromString (x: String) : Option ffi_type :=
   | "uint8_t"     => uint8_t
   | "uint16_t"    => uint16_t
   | "uint32_t"    => uint32_t
+  | "uint64_t"    => uint64_t
   | "int8_t"      => int8_t
   | "int16_t"     => int16_t
   | "int32_t"     => int32_t
+  | "int64_t"     => int64_t
   | "float"       => float
   | "bool"        => bool
   | _             => Option.none
@@ -47,7 +53,6 @@ def ffi_type.fromString (x: String) : Option ffi_type :=
 theorem FFI_string_conversion_is_valid (x : ffi_type) : (ffi_type.fromString x.convert_to_string) = x := by
   cases x
   repeat rfl
-
 
 inductive lua_type where
   | id : String -> lua_type
@@ -96,11 +101,13 @@ def ConvertTypeFFI (pure_type : Pure.data_type) : Option ffi_type :=
       | Pure.word_size.w1 => ffi_type.int8_t
       | Pure.word_size.w2 => ffi_type.int16_t
       | Pure.word_size.w4 => ffi_type.int32_t
+      | Pure.word_size.w8 => ffi_type.int64_t
     | Pure.number_interpretation.unsigned =>
       match size with
       | Pure.word_size.w1 => ffi_type.uint8_t
       | Pure.word_size.w2 => ffi_type.uint16_t
       | Pure.word_size.w4 => ffi_type.uint32_t
+      | Pure.word_size.w8 => ffi_type.uint64_t
   | Pure.data_type.string => none
   | Pure.data_type.void => none
 
@@ -136,7 +143,10 @@ def Signify (t : Thing) : String :=
   | Thing.term a => ResolveName a
   | Thing.retrieve_from_one_to_one_map map_ref ind => s!"{Signify map_ref}[{Signify ind}]"
   | Thing.exists_in_one_to_one_map map_ref ind => s!"{Signify map_ref}[{Signify ind}] != nil"
-  | Thing.strong_id id gen => s!"ffi.new(\"struct strong_id\", {curly s!"{Signify id}, {Signify gen}"})"
+  -- | Thing.strong_id id gen => s!"ffi.new(\"struct strong_id\", {curly s!"{Signify id}, {Signify gen}"})"
+  | Thing.strong_id id gen => s!"{Signify id} + {Signify gen} * {2 ^ 32}"
+  | Thing.id_from_strong_id id => s!"{Signify id} % {2 ^ 32}"
+  | Thing.generation_from_strong_id id => s!"({Signify id} - {Signify id} % {2 ^ 32}) / {2 ^ 32}"
   | Thing.inc value => s!"({Signify value} + 1)"
 
 def ResolveParamTypes (params: List (GivenName × SupposedType)) :=

@@ -4,6 +4,7 @@ inductive word_size where
   | w1 : word_size
   | w2 : word_size
   | w4 : word_size
+  | w8 : word_size
 
 inductive number_interpretation where
   | signed : number_interpretation
@@ -15,7 +16,7 @@ inductive data_type where
   | number : number_interpretation → word_size → data_type
   | void : data_type
 
-def int32_t := data_type.number number_interpretation.signed word_size.w4
+def id_raw_type := data_type.number number_interpretation.signed word_size.w8
 
 end Pure
 
@@ -83,14 +84,16 @@ inductive Thing where
   | list : List Thing → Thing
   | inc : Thing → Thing
   | strong_id : (index : Thing) → (generation : Thing) → Thing
+  | generation_from_strong_id : (strong_id : Thing) → Thing
+  | id_from_strong_id : (strong_id : Thing) → Thing
   | exists_in_one_to_one_map : (map_ref : Thing) → (item : Thing) → Thing
   | retrieve_from_one_to_one_map : (map_ref : Thing) → (item : Thing) → Thing
 
 structure StrongId (table_name : String) (name : String) where
   var : GivenName := GivenName.name [] name
   expr := Thing.term var
-  internal_id : Thing := Thing.projection expr "internal_id"
-  generation : Thing := Thing.projection expr "generation"
+  internal_id : Thing := Thing.id_from_strong_id expr
+  generation : Thing := Thing.generation_from_strong_id expr
   type := SupposedType.strong_id table_name
 
 
@@ -156,19 +159,19 @@ structure DataArrays where
   link_array (table: String) (link_name : String) (linked_table : String) : Thing
     := Thing.projection expr s!"{table}_link_{link_name}_from_{linked_table}_table"
 
-  reference_one_array (table: String) (ref : Table.reference) : Thing
+  reference_one_map (table: String) (ref : Table.reference) : Thing
     := Thing.projection expr s!"{table}_reference_as_unique_{ref.referenced_as}_in_{ref.referenced_in}_table"
 
-  reference_many_array (table: String) (ref : Table.reference) : Thing
+  reference_many_map (table: String) (ref : Table.reference) : Thing
     := Thing.projection expr s!"{table}_referenced_as_one_of_{ref.referenced_as}_in_{ref.referenced_in}_table"
 
-  usage (table: String) (id : StrongId table s!"{table}_id") : Thing
+  usage (table: String) (id : StrongId table id_name) : Thing
     := Thing.index (usage_array table) (id.internal_id)
 
-  generation (table: String) (id : StrongId table s!"{table}_id") : Thing
+  generation (table: String) (id : StrongId table id_name) : Thing
     := Thing.index (generation_array table) (id.internal_id)
 
-  field (table: String) (field : String) (id : StrongId table s!"{table}_id") : Thing
+  field (table: String) (field : String) (id : StrongId table id_name) : Thing
     := Thing.index (field_array table field) (id.internal_id)
 
   delete (table: String) : Thing
@@ -265,6 +268,80 @@ def ConvertLinkToFuncInput
     :=
   ⟨ link |> LinkVarName |> GivenName.name [], SupposedType.strong_id link.linked_table ⟩
 
+def DeleteRelationFunc
+  (data: DataArrays)
+  (table: Table.table)
+  (id: StrongId table.name id_name )
+    :
+  Instruction
+    :=
+  let gen := data.generation table.name id
+
+  let clear_field
+    (field : Table.field)
+      :
+    Instruction
+      :=
+    Instruction.assignment (data.field table.name field.name id) (Thing.explicit_numerical_value 0)
+
+  let clear_link_one
+    (link : Table.link)
+      :
+    Instruction
+      :=
+    let link_array := data.link_array table.name link.name link.linked_table
+    let link_array_location := Thing.index link_array id.internal_id
+    Instruction.program [
+      Instruction.remove_from_one_to_one_map
+        (
+          data.reference_one_map
+            link.linked_table
+            (Table.link_to_reference table link)
+        )
+        link_array_location,
+      Instruction.assignment link_array_location (Thing.explicit_numerical_value 0)
+    ]
+
+  let clear_link_many
+    (link : Table.link)
+      :
+    Instruction
+      :=
+    let link_array := data.link_array table.name link.name link.linked_table
+    let link_array_location := Thing.index link_array id.internal_id
+    Instruction.program [
+      Instruction.remove_from_one_to_many_map
+        (
+          data.reference_one_map
+            link.linked_table
+            (Table.link_to_reference table link)
+        )
+        link_array_location
+        id.internal_id,
+      Instruction.assignment (data.link_array table.name link.name link.linked_table) (Thing.explicit_numerical_value 0)
+    ]
+
+  Instruction.function_declaration
+    (GivenName.name [namespace_name table.name] ("delete"))
+    (SupposedType.pure Pure.data_type.void)
+    [
+      ⟨ data.self, data.self_t ⟩,
+      ⟨ id.var, id.type ⟩,
+    ]
+    (
+      Instruction.program (
+        [
+          Instruction.assert (Validity table.name id),
+          Instruction.assignment gen (Thing.inc gen)
+        ]
+        ++ table.fields.map clear_field
+        ++ table.links_one.map clear_link_one
+        ++ table.links_many.map clear_link_many
+      )
+    )
+
+
+
 def CreateRelationFunc
   (data: DataArrays)
   (table: Table.table)
@@ -287,7 +364,7 @@ def CreateRelationFunc
       :=
     let id : StrongId link.linked_table (LinkVarName link) := {}
     let ref := Table.link_to_reference table link
-    let ref_map := data.reference_one_array link.linked_table ref
+    let ref_map := data.reference_one_map link.linked_table ref
     let link_array := data.link_array table.name link.name link.linked_table
     let link_location_in_array := Thing.index link_array temp_variable
     Instruction.program [
@@ -309,7 +386,7 @@ def CreateRelationFunc
       :=
     let id : StrongId link.linked_table (LinkVarName link) := {}
     let ref := Table.link_to_reference table link
-    let ref_map := data.reference_one_array link.linked_table ref
+    let ref_map := data.reference_one_map link.linked_table ref
     let link_array := data.link_array table.name link.name link.linked_table
     let link_location_in_array := Thing.index link_array temp_variable
     Instruction.program [
@@ -363,14 +440,14 @@ def ReserveField (data : DataArrays) (table : Table.table) (field: Table.field) 
 
 def ReserveLink (data: DataArrays) (table : Table.table) (link : Table.link) : Instruction :=
   let link_symbol := data.link_array table.name link.name link.linked_table
-  Instruction.reserve_pure_array link_symbol Pure.int32_t (data.size table.name)
+  Instruction.reserve_pure_array link_symbol Pure.id_raw_type (data.size table.name)
 
 def ReserveLinkedInOne (data: DataArrays) (table : Table.table) (link : Table.reference) : Instruction :=
-  let reference_symbol := data.reference_one_array table.name link
+  let reference_symbol := data.reference_one_map table.name link
   Instruction.reserve_one_to_one_id_map reference_symbol
 
 def ReserveLinkedInMany (data: DataArrays) (table : Table.table) (link : Table.reference) : Instruction :=
-  let reference_symbol := data.reference_one_array table.name link
+  let reference_symbol := data.reference_one_map table.name link
   Instruction.reserve_one_to_many_id_map reference_symbol
 
 def ReserveArraysFunc (data : DataArrays) (table : Table.table) : Instruction :=
@@ -386,8 +463,8 @@ def ReserveArraysFunc (data : DataArrays) (table : Table.table) : Instruction :=
         [
           Instruction.reserve_pure_array
             (data.usage_array table.name)
-            Pure.int32_t (data.size table.name),
-          Instruction.reserve_pure_array (data.generation_array table.name) Pure.int32_t (data.size table.name)
+            Pure.id_raw_type (data.size table.name),
+          Instruction.reserve_pure_array (data.generation_array table.name) Pure.id_raw_type (data.size table.name)
         ]
         ++
         table.fields.map (ReserveField data table)
