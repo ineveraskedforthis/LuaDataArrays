@@ -82,6 +82,7 @@ inductive SupposedType where
   | alias : String → SupposedType
   | index : SupposedType
   | strong_id : (name : String) → SupposedType
+  | array : SupposedType → SupposedType
 
 inductive GivenName where
   | name : List String → String → GivenName
@@ -121,6 +122,7 @@ def ValueExpr : Thing := Thing.term ValueName
 inductive Instruction where
   | assert : Thing → Instruction
   | assignment : Thing → Thing → Instruction
+  | local_assignment : Thing → Thing → Instruction
   | return_value : Thing → Instruction
   | program : List Instruction → Instruction
   | function_declaration :
@@ -141,7 +143,8 @@ inductive Instruction where
   | trivial_statement : Thing → Instruction
   | copy_many_map_collection: (target : Thing) → (origin : Thing) → (key : Thing) → Instruction
   | for_each : (collection : Thing) → (iterator : Thing) → (action : Instruction) → Instruction
-  | file_extra_top : (namespace_name : String) → Instruction
+  | file_extra_top : (namespace_name : String) → (table_name : String) → Instruction
+  | structure_definition : (name: String) → (List (String × SupposedType)) → Instruction
 
 def validity_checker (table_name : String) : Thing :=
   Thing.term
@@ -212,8 +215,8 @@ def IsValid (data : DataArrays) (table_name : String) (id : StrongId table_name 
   Instruction.program [
     Instruction.condition
       in_bounds
-      (Instruction.return_value (Thing.and in_bounds is_fresh))
-      (Instruction.return_value (Thing.explicit_boolean_value False))
+      (Instruction.program [(Instruction.return_value (Thing.and in_bounds is_fresh))])
+      (Instruction.program [(Instruction.return_value (Thing.explicit_boolean_value False))])
   ]
 
 def IsValidFunc (data : DataArrays) (table_name : String) (id : StrongId table_name s!"{table_name}_id") : Instruction :=
@@ -360,7 +363,7 @@ def DeleteRelationFunc
     let temp_collection := Thing.term (GivenName.name [] "temp_container")
     let it := Thing.term (GivenName.name [] "iterator")
     Instruction.program [
-      Instruction.assignment temp_collection Thing.empty_collection,
+      Instruction.local_assignment temp_collection Thing.empty_collection,
       Instruction.copy_many_map_collection temp_collection ref_map id.internal_id,
       Instruction.for_each temp_collection it (
         Instruction.trivial_statement
@@ -420,8 +423,15 @@ def CreateRelationFunc
       Instruction.condition_then
         (Thing.exists_in_one_to_one_map ref_map id.internal_id)
         (
-          Instruction.trivial_statement
-            (Thing.call (data.delete_weak table.name) (Thing.retrieve_from_one_to_one_map ref_map id.internal_id) )
+          Instruction.program
+          [
+            Instruction.trivial_statement
+            (
+              Thing.call
+              (data.delete_weak table.name)
+              (Thing.retrieve_from_one_to_one_map ref_map id.internal_id)
+            )
+          ]
         ),
       Instruction.set_one_to_one_map ref_map id.internal_id temp_variable,
       Instruction.assignment link_location_in_array id.internal_id
@@ -456,7 +466,7 @@ def CreateRelationFunc
     (
       Instruction.program ([
         -- store index
-        Instruction.assignment temp_variable available,
+        Instruction.local_assignment temp_variable available,
         -- update usage
         Instruction.assignment usage_count (Thing.explicit_numerical_value 0),
         -- update index
@@ -536,7 +546,7 @@ def Translate (t: Table.table) (l: Language) (indent_type : String) : String :=
   let l' := l indent_type ""
 
   l' (Instruction.program [
-    Instruction.file_extra_top (t.name |> namespace_name)
+    Instruction.file_extra_top (t.name |> namespace_name) t.name
   ])
   ++
   l' (Instruction.program [ReserveArraysFunc state t])
@@ -548,5 +558,25 @@ def Translate (t: Table.table) (l: Language) (indent_type : String) : String :=
   l' (Instruction.program (t.fields.map (ChangeFieldFunc state t.name id)))
   ++
   l' (Instruction.program [CreateRelationFunc state t])
+
+def field_to_named_type  (t : Table.table) (f : Table.field) : (String × SupposedType) :=
+  ⟨ s!"{t.name}_data_{f.name}", SupposedType.array (SupposedType.pure f.column_normal_type) ⟩
+
+def link_to_named_type  (t : Table.table) (l : Table.link) : (String × SupposedType) :=
+  ⟨ s!"{t.name}_link_{l.name}_from_{l.linked_table}_table", SupposedType.array (SupposedType.pure Pure.id_raw_type) ⟩
+
+def GodFields (t : Table.table) : List (String × SupposedType) :=
+  [
+    ⟨ s!"{t.name}_available_id", SupposedType.pure Pure.id_raw_type ⟩,
+    ⟨ s!"{t.name}_size", SupposedType.pure Pure.id_raw_type⟩,
+    ⟨ s!"{t.name}_usage", SupposedType.array (SupposedType.pure Pure.id_raw_type) ⟩,
+    ⟨ s!"{t.name}_generation", SupposedType.array (SupposedType.pure Pure.id_raw_type) ⟩,
+  ]
+  ++
+  t.fields.map (field_to_named_type t)
+  ++
+  t.links_one.map (link_to_named_type t)
+  ++
+  t.links_many.map (link_to_named_type t)
 
 end Language

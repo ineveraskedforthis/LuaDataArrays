@@ -1,4 +1,6 @@
 local ffi = require("ffi")
+---@class party_strong_id
+---@field is_party boolean
 PARTY = {  }
 
 ---@param state data_arrays
@@ -25,9 +27,7 @@ end
 ---@returns number
 function PARTY.get_count(state, party_id)
 	assert(PARTY.is_valid(state, party_id))
-
 	return state.party_data_count[party_id % 4294967296]
-
 end
 
 ---@param state data_arrays
@@ -35,21 +35,18 @@ end
 ---@param value number
 function PARTY.set_count(state, party_id, value)
 	assert(PARTY.is_valid(state, party_id))
-
 	state.party_data_count[party_id % 4294967296] = value
 end
 
 ---@param state data_arrays
 ---@returns party_strong_id
 function PARTY.create(state)
-	id = state.party_available_id
+	local id = state.party_available_id
 	state.party_usage[id] = 0
 	while (0 < state.party_usage[id]) do
 		assert((state.party_available_id < state.party_size))
-
 		state.party_available_id = (state.party_available_id + 1)
 	end
 	return id + state.party_generation[id] * 4294967296
-
 end
 

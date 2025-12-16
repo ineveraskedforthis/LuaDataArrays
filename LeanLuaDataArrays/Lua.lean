@@ -84,12 +84,13 @@ def ConvertTypeLua (t : SupposedType) : String :=
   | SupposedType.index => "number"
   | SupposedType.alias name => name
   | SupposedType.strong_id name => s!"{name}_strong_id"
+  | SupposedType.array block => s!"{ConvertTypeLua block}[]"
   | SupposedType.pure pure_type =>
     match pure_type with
     | Pure.data_type.bool => "boolean"
     | Pure.data_type.number .. => "number"
     | Pure.data_type.string => "string"
-    | Pure.data_type.float => "float"
+    | Pure.data_type.float => "number"
     | Pure.data_type.void => "error_type"
 
 def ConvertTypeFFI (pure_type : Pure.data_type) : Option ffi_type :=
@@ -177,11 +178,14 @@ def JoinLines (lines : List String) :=
   | [] => ""
   | line :: lines => s!"{line}\n" ++ JoinLines lines
 
+def StructureField (name_and_type : String × SupposedType) :=
+  s!"---@field {name_and_type.1} {ConvertTypeLua name_and_type.2}"
+
 def Compile (tb : String) (indent : String) (i : Instruction) : String :=
   match i with
-  | Instruction.return_value e => s!"{indent}return {Signify e}\n"
+  | Instruction.return_value e => s!"{indent}return {Signify e}"
 
-  | Instruction.assert e => s!"{indent}assert({Signify e})\n"
+  | Instruction.assert e => s!"{indent}assert({Signify e})"
 
   | Instruction.condition a b c =>
     s!"{indent}if {Signify a} then\n"
@@ -196,6 +200,8 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
     ++s!"{indent}end\n"
 
   | Instruction.assignment a b => s!"{indent}{Signify a} = {Signify b}"
+
+  | Instruction.local_assignment a b => s!"{indent}local {Signify a} = {Signify b}"
 
   | Instruction.function_declaration name out_type params body =>
     match out_type with
@@ -232,7 +238,7 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
   | Instruction.remove_from_one_to_one_map map_ref key =>
     s!"{indent}{Signify map_ref}[{Signify key}] = nil"
   | Instruction.set_one_to_many_map map_ref key value =>
-    s!"{indent}if {Signify map_ref}[Signify key] then {Signify map_ref}[{Signify key}][{Signify value}] = value else {Signify map_ref}[{Signify key}] = {curly ""}; {Signify map_ref}[{Signify key}][{Signify value}] = value; end"
+    s!"{indent}if {Signify map_ref}[{Signify key}] then {Signify map_ref}[{Signify key}][{Signify value}] = value else {Signify map_ref}[{Signify key}] = {curly ""}; {Signify map_ref}[{Signify key}][{Signify value}] = value; end"
   | Instruction.set_one_to_one_map map_ref key value =>
     s!"{indent}{Signify map_ref}[{Signify key}] = {Signify value}"
   | Instruction.loop_while condition program =>
@@ -248,7 +254,10 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
   | Instruction.copy_many_map_collection target origin key =>
     s!"{indent}if {Signify origin}[key] then for _, val in ipairs({Signify origin}[{Signify key}]) do table.insert({Signify target}, val) end end"
 
-  | Instruction.file_extra_top ns =>
-    s!"local ffi = require(\"ffi\")\n{ns} = {curly ""}\n"
+  | Instruction.file_extra_top ns table_name =>
+    s!"local ffi = require(\"ffi\")\n---@class {table_name}_strong_id\n---@field is_{table_name} boolean\n{ns} = {curly ""}\n"
+
+  | Instruction.structure_definition name fields =>
+    s!"---@class {name}\n" ++ ((fields.map StructureField) |> JoinLines)
 
 end AnnotatedLuajit

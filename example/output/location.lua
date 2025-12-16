@@ -1,4 +1,6 @@
 local ffi = require("ffi")
+---@class location_strong_id
+---@field is_location boolean
 LOCATION = {  }
 
 ---@param state data_arrays
@@ -22,34 +24,29 @@ end
 
 ---@param state data_arrays
 ---@param location_id location_strong_id
----@returns float
+---@returns number
 function LOCATION.get_danger(state, location_id)
 	assert(LOCATION.is_valid(state, location_id))
-
 	return state.location_data_danger[location_id % 4294967296]
-
 end
 
 ---@param state data_arrays
 ---@param location_id location_strong_id
----@param value float
+---@param value number
 function LOCATION.set_danger(state, location_id, value)
 	assert(LOCATION.is_valid(state, location_id))
-
 	state.location_data_danger[location_id % 4294967296] = value
 end
 
 ---@param state data_arrays
 ---@returns location_strong_id
 function LOCATION.create(state)
-	id = state.location_available_id
+	local id = state.location_available_id
 	state.location_usage[id] = 0
 	while (0 < state.location_usage[id]) do
 		assert((state.location_available_id < state.location_size))
-
 		state.location_available_id = (state.location_available_id + 1)
 	end
 	return id + state.location_generation[id] * 4294967296
-
 end
 

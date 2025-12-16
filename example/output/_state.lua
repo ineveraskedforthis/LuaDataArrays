@@ -1,19 +1,17 @@
 ---@class data_arrays
----@field generation_counter_array_location number[]
----@field size_location number
----@field used_location_id number[]
----@field available_location_id number
----@field data_array_location_danger number[]
----@field generation_counter_array_party number[]
----@field size_party number
----@field used_party_id number[]
----@field available_party_id number
----@field data_array_party_count number[]
----@field generation_counter_array_party_location number[]
----@field size_party_location number
----@field used_party_location_id number[]
----@field available_party_location_id number
----@field data_array_party_location_to_location number[]
----@field data_array_party_location_one_from_location number[]
----@field data_array_party_location_to_party number[]
----@field data_array_party_location_many_from_party (table<number, number>)[]
+---@field location_available_id number
+---@field location_size number
+---@field location_usage number[]
+---@field location_generation number[]
+---@field location_data_danger number[]
+---@field party_available_id number
+---@field party_size number
+---@field party_usage number[]
+---@field party_generation number[]
+---@field party_data_count number[]
+---@field party_location_available_id number
+---@field party_location_size number
+---@field party_location_usage number[]
+---@field party_location_generation number[]
+---@field party_location_link_party_from_party_table number[]
+---@field party_location_link_location_from_location_table number[]

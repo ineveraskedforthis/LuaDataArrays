@@ -14,7 +14,7 @@ rule generate_party_location
   command = lake exe leanluadataarrays table ./example/input party_location $out
 
 rule generate_state
-  command = lake exe leanluadataarrays state $out $in
+  command = lake exe leanluadataarrays state ./example/input $out
 
 rule generate_linker
   command = lake exe leanluadataarrays link $out $in
@@ -24,4 +24,4 @@ build cache/lean_is_ready : build_exe Main.lean | LeanLuaDataArrays/Language.lea
 build ./example/output/location.lua : generate_location | cache/lean_is_ready
 build ./example/output/party.lua : generate_party | cache/lean_is_ready
 build ./example/output/party_location.lua : generate_party_location | cache/lean_is_ready
-
+build ./example/output/_state.lua : generate_state | cache/lean_is_ready
