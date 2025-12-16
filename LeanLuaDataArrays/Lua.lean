@@ -148,6 +148,7 @@ def Signify (t : Thing) : String :=
   | Thing.id_from_strong_id id => s!"{Signify id} % {2 ^ 32}"
   | Thing.generation_from_strong_id id => s!"({Signify id} - {Signify id} % {2 ^ 32}) / {2 ^ 32}"
   | Thing.inc value => s!"({Signify value} + 1)"
+  | Thing.empty_collection => curly ""
 
 def ResolveParamTypes (params: List (GivenName × SupposedType)) :=
   match params with
@@ -234,6 +235,14 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
   | Instruction.loop_while condition program =>
     s!"while {Signify condition} do\n"
     ++ Compile tb s!"{indent}{tb}" program
-    ++ "end"
+    ++ "{tb}end"
+
+  | Instruction.for_each collection iterator program =>
+    s!"for _, {Signify iterator} in ipairs({Signify collection}) do"
+    ++ Compile tb s!"{indent}{tb}" program
+    ++s!"{tb}end"
+
+  | Instruction.copy_many_map_collection target origin key =>
+    s!"if {Signify origin}[key] then for _, val in ipairs({Signify origin}[{Signify key}]) do table.insert({Signify target}, val) end end"
 
 end AnnotatedLuajit

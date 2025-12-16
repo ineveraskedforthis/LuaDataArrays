@@ -88,6 +88,7 @@ inductive Thing where
   | id_from_strong_id : (strong_id : Thing) → Thing
   | exists_in_one_to_one_map : (map_ref : Thing) → (item : Thing) → Thing
   | retrieve_from_one_to_one_map : (map_ref : Thing) → (item : Thing) → Thing
+  | empty_collection : Thing
 
 structure StrongId (table_name : String) (name : String) where
   var : GivenName := GivenName.name [] name
@@ -121,7 +122,8 @@ inductive Instruction where
   | remove_from_one_to_one_map : (map_ref : Thing) → (key : Thing) → Instruction
   | remove_from_one_to_many_map : (map_ref : Thing) → (key : Thing) → (value : Thing) → Instruction
   | trivial_statement : Thing → Instruction
-
+  | copy_many_map_collection: (target : Thing) → (origin : Thing) → (key : Thing) → Instruction
+  | for_each : (collection : Thing) → (iterator : Thing) → (action : Instruction) → Instruction
 
 def validity_checker (table_name : String) : Thing :=
   Thing.term
@@ -321,6 +323,34 @@ def DeleteRelationFunc
       Instruction.assignment (data.link_array table.name link.name link.linked_table) (Thing.explicit_numerical_value 0)
     ]
 
+  let clear_ref_one
+    (ref : Table.reference)
+      :
+    Instruction
+      :=
+    let ref_map := data.reference_one_map table.name ref
+    let ref_id := Thing.retrieve_from_one_to_one_map ref_map id.internal_id
+    Instruction.trivial_statement
+      ( Thing.call (data.delete ref.referenced_in) ref_id)
+
+  let clear_ref_many
+    (ref : Table.reference)
+      :
+    Instruction
+      :=
+    let ref_map := data.reference_many_map table.name ref
+    let temp_collection := Thing.term (GivenName.name [] "temp_container")
+    let it := Thing.term (GivenName.name [] "iterator")
+    Instruction.program [
+      Instruction.assignment temp_collection Thing.empty_collection,
+      Instruction.copy_many_map_collection temp_collection ref_map id.internal_id,
+      Instruction.for_each temp_collection it (
+        Instruction.trivial_statement
+          ( Thing.call (data.delete_weak ref.referenced_in) it)
+      )
+    ]
+
+
   Instruction.function_declaration
     (GivenName.name [namespace_name table.name] ("delete"))
     (SupposedType.pure Pure.data_type.void)
@@ -337,10 +367,10 @@ def DeleteRelationFunc
         ++ table.fields.map clear_field
         ++ table.links_one.map clear_link_one
         ++ table.links_many.map clear_link_many
+        ++ table.references_one.map clear_ref_one
+        ++ table.references_many.map clear_ref_many
       )
     )
-
-
 
 def CreateRelationFunc
   (data: DataArrays)
