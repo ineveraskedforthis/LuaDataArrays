@@ -2,6 +2,8 @@ import LeanLuaDataArrays.Language
 
 namespace AnnotatedLuajit
 
+def curly (s : String) := "{ " ++ s ++ " }"
+
 open Language
 
 
@@ -132,6 +134,10 @@ def Signify (t : Thing) : String :=
     | a :: l => s!"{Signify a}, {Signify (Thing.list l)}"
   | Thing.projection a s => s!"{Signify a}.{s}"
   | Thing.term a => ResolveName a
+  | Thing.retrieve_from_one_to_one_map map_ref ind => s!"{Signify map_ref}[{Signify ind}]"
+  | Thing.exists_in_one_to_one_map map_ref ind => s!"{Signify map_ref}[{Signify ind}] != nil"
+  | Thing.strong_id id gen => s!"ffi.new(\"struct strong_id\", {curly s!"{Signify id}, {Signify gen}"})"
+  | Thing.inc value => s!"({Signify value} + 1)"
 
 def ResolveParamTypes (params: List (GivenName × SupposedType)) :=
   match params with
@@ -170,6 +176,11 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
     ++"{indent}else\n"
     ++(Compile tb s!"{indent}{tb}" c)
 
+  | Instruction.condition_then a b =>
+    s!"{indent}if {Signify a} then\n"
+    ++(Compile tb s!"{indent}{tb}" b)
+    ++"{indent}end\n"
+
   | Instruction.assignment a b => s!"{Signify a} = {Signify b}"
 
   | Instruction.function_declaration name out_type params body =>
@@ -195,5 +206,24 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
     | some x =>
       s!"{Signify array} = ffi.new(\"{x}[?]\", {Signify size})"
 
+  | Instruction.reserve_one_to_many_id_map array =>
+    s!"{Signify array} = {curly ""}"
+  | Instruction.reserve_one_to_one_id_map array =>
+    s!"{Signify array} = {curly ""}"
+
+  | Instruction.trivial_statement s =>
+    s!"{Signify s}"
+  | Instruction.remove_from_one_to_many_map map_ref key value =>
+    s!"if {Signify map_ref}[{Signify key}] then {Signify map_ref}[{Signify key}][{Signify value}] = nil end"
+  | Instruction.remove_from_one_to_one_map map_ref key =>
+    s!"{Signify map_ref}[{Signify key}] = nil"
+  | Instruction.set_one_to_many_map map_ref key value =>
+    s!"if {Signify map_ref}[Signify key] then {Signify map_ref}[{Signify key}][{Signify value}] = value else {Signify map_ref}[{Signify key}] = {curly ""}; {Signify map_ref}[{Signify key}][{Signify value}] = value; end"
+  | Instruction.set_one_to_one_map map_ref key value =>
+    s!"{Signify map_ref}[{Signify key}] = {Signify value}"
+  | Instruction.loop_while condition program =>
+    s!"while {Signify condition} do\n"
+    ++ Compile tb s!"{indent}{tb}" program
+    ++ "end"
 
 end AnnotatedLuajit
