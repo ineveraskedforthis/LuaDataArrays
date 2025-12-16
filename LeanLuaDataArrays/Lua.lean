@@ -83,12 +83,13 @@ def ConvertTypeLua (t : SupposedType) : String :=
   match t with
   | SupposedType.index => "number"
   | SupposedType.alias name => name
-  | SupposedType.strong_id table => table ++ "_strong_id"
+  | SupposedType.strong_id name => s!"{name}_strong_id"
   | SupposedType.pure pure_type =>
     match pure_type with
     | Pure.data_type.bool => "boolean"
     | Pure.data_type.number .. => "number"
     | Pure.data_type.string => "string"
+    | Pure.data_type.float => "float"
     | Pure.data_type.void => "error_type"
 
 def ConvertTypeFFI (pure_type : Pure.data_type) : Option ffi_type :=
@@ -109,6 +110,7 @@ def ConvertTypeFFI (pure_type : Pure.data_type) : Option ffi_type :=
       | Pure.word_size.w4 => ffi_type.uint32_t
       | Pure.word_size.w8 => ffi_type.uint64_t
   | Pure.data_type.string => none
+  | Pure.data_type.float => ffi_type.float
   | Pure.data_type.void => none
 
 def ResolveNamespace (n : List String) : String :=
@@ -184,15 +186,16 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
   | Instruction.condition a b c =>
     s!"{indent}if {Signify a} then\n"
     ++(Compile tb s!"{indent}{tb}" b)
-    ++"{indent}else\n"
+    ++s!"{indent}else\n"
     ++(Compile tb s!"{indent}{tb}" c)
+    ++s!"{indent}end\n"
 
   | Instruction.condition_then a b =>
     s!"{indent}if {Signify a} then\n"
     ++(Compile tb s!"{indent}{tb}" b)
-    ++"{indent}end\n"
+    ++s!"{indent}end\n"
 
-  | Instruction.assignment a b => s!"{Signify a} = {Signify b}"
+  | Instruction.assignment a b => s!"{indent}{Signify a} = {Signify b}"
 
   | Instruction.function_declaration name out_type params body =>
     match out_type with
@@ -203,7 +206,7 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
       ++ s!"end\n"
     | _ =>
       ResolveParamTypes params
-      ++ s! "---@returns {ConvertTypeLua out_type}"
+      ++ s! "---@returns {ConvertTypeLua out_type}\n"
       ++ s!"{indent}function {ResolveName name}({ResolveParams params})\n"
       ++ Compile tb s!"{indent}{tb}" body
       ++ s!"end\n"
@@ -215,34 +218,37 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
     match ffi_type with
     | none => ""
     | some x =>
-      s!"{Signify array} = ffi.new(\"{x}[?]\", {Signify size})"
+      s!"{indent}{Signify array} = ffi.new(\"{x}[?]\", {Signify size})"
 
   | Instruction.reserve_one_to_many_id_map array =>
-    s!"{Signify array} = {curly ""}"
+    s!"{indent}{Signify array} = {curly ""}"
   | Instruction.reserve_one_to_one_id_map array =>
-    s!"{Signify array} = {curly ""}"
+    s!"{indent}{Signify array} = {curly ""}"
 
   | Instruction.trivial_statement s =>
-    s!"{Signify s}"
+    s!"{indent}{Signify s}"
   | Instruction.remove_from_one_to_many_map map_ref key value =>
-    s!"if {Signify map_ref}[{Signify key}] then {Signify map_ref}[{Signify key}][{Signify value}] = nil end"
+    s!"{indent}if {Signify map_ref}[{Signify key}] then {Signify map_ref}[{Signify key}][{Signify value}] = nil end"
   | Instruction.remove_from_one_to_one_map map_ref key =>
-    s!"{Signify map_ref}[{Signify key}] = nil"
+    s!"{indent}{Signify map_ref}[{Signify key}] = nil"
   | Instruction.set_one_to_many_map map_ref key value =>
-    s!"if {Signify map_ref}[Signify key] then {Signify map_ref}[{Signify key}][{Signify value}] = value else {Signify map_ref}[{Signify key}] = {curly ""}; {Signify map_ref}[{Signify key}][{Signify value}] = value; end"
+    s!"{indent}if {Signify map_ref}[Signify key] then {Signify map_ref}[{Signify key}][{Signify value}] = value else {Signify map_ref}[{Signify key}] = {curly ""}; {Signify map_ref}[{Signify key}][{Signify value}] = value; end"
   | Instruction.set_one_to_one_map map_ref key value =>
-    s!"{Signify map_ref}[{Signify key}] = {Signify value}"
+    s!"{indent}{Signify map_ref}[{Signify key}] = {Signify value}"
   | Instruction.loop_while condition program =>
-    s!"while {Signify condition} do\n"
+    s!"{indent}while {Signify condition} do\n"
     ++ Compile tb s!"{indent}{tb}" program
-    ++ "{tb}end"
+    ++ s!"{indent}end"
 
   | Instruction.for_each collection iterator program =>
-    s!"for _, {Signify iterator} in ipairs({Signify collection}) do"
+    s!"{indent}for _, {Signify iterator} in ipairs({Signify collection}) do"
     ++ Compile tb s!"{indent}{tb}" program
-    ++s!"{tb}end"
+    ++ s!"{indent}end"
 
   | Instruction.copy_many_map_collection target origin key =>
-    s!"if {Signify origin}[key] then for _, val in ipairs({Signify origin}[{Signify key}]) do table.insert({Signify target}, val) end end"
+    s!"{indent}if {Signify origin}[key] then for _, val in ipairs({Signify origin}[{Signify key}]) do table.insert({Signify target}, val) end end"
+
+  | Instruction.file_extra_top ns =>
+    s!"local ffi = require(\"ffi\")\n{ns} = {curly ""}\n"
 
 end AnnotatedLuajit

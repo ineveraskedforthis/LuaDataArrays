@@ -4,8 +4,14 @@
 rule build_exe
   command = cmd /c "lake build && touch $out"
 
-rule generate
-  command = lake exe leanluadataarrays table $in $out
+rule generate_location
+  command = lake exe leanluadataarrays table ./example/input location $out
+
+rule generate_party
+  command = lake exe leanluadataarrays table ./example/input party $out
+
+rule generate_party_location
+  command = lake exe leanluadataarrays table ./example/input party_location $out
 
 rule generate_state
   command = lake exe leanluadataarrays state $out $in
@@ -13,13 +19,9 @@ rule generate_state
 rule generate_linker
   command = lake exe leanluadataarrays link $out $in
 
-build cache/lean_is_ready : build_exe Main.lean
+build cache/lean_is_ready : build_exe Main.lean | LeanLuaDataArrays/Language.lean LeanLuaDataArrays/Lua.lean
 
-build cache/linker : generate_linker ./example/input/party_location/link
-
-build ./example/output/location.lua : generate ./example/input/location/name ./example/input/location/desc cache/linker | cache/lean_is_ready
-build ./example/output/party.lua : generate ./example/input/party/name ./example/input/party/desc cache/linker | cache/lean_is_ready
-build ./example/output/party_location.lua : generate ./example/input/party_location/name ./example/input/party_location/desc | cache/lean_is_ready
-
-build ./example/output/_state.lua : generate_state ./example/input/location/name ./example/input/location/desc ./example/input/party/name ./example/input/party/desc ./example/input/party_location/name ./example/input/party_location/desc | cache/lean_is_ready
+build ./example/output/location.lua : generate_location | cache/lean_is_ready
+build ./example/output/party.lua : generate_party | cache/lean_is_ready
+build ./example/output/party_location.lua : generate_party_location | cache/lean_is_ready
 

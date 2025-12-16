@@ -14,7 +14,24 @@ inductive data_type where
   | string : data_type
   | bool : data_type
   | number : number_interpretation → word_size → data_type
+  | float : data_type
   | void : data_type
+
+def data_type.fromString (x: String) : Option data_type :=
+  match x with
+  | "uint8_t"     => number number_interpretation.unsigned word_size.w1
+  | "uint16_t"    => number number_interpretation.unsigned word_size.w2
+  | "uint32_t"    => number number_interpretation.unsigned word_size.w4
+  | "uint64_t"    => number number_interpretation.unsigned word_size.w8
+  | "int8_t"      => number number_interpretation.signed word_size.w1
+  | "int16_t"     => number number_interpretation.signed word_size.w2
+  | "int32_t"     => number number_interpretation.signed word_size.w4
+  | "int64_t"     => number number_interpretation.signed word_size.w8
+  | "float"       => float
+  | "bool"        => bool
+  | _             => Option.none
+
+def str_to_data_type (x: String) := data_type.fromString x
 
 def id_raw_type := data_type.number number_interpretation.signed word_size.w8
 
@@ -64,7 +81,7 @@ inductive SupposedType where
   | pure : Pure.data_type → SupposedType
   | alias : String → SupposedType
   | index : SupposedType
-  | strong_id : String → SupposedType
+  | strong_id : (name : String) → SupposedType
 
 inductive GivenName where
   | name : List String → String → GivenName
@@ -124,6 +141,7 @@ inductive Instruction where
   | trivial_statement : Thing → Instruction
   | copy_many_map_collection: (target : Thing) → (origin : Thing) → (key : Thing) → Instruction
   | for_each : (collection : Thing) → (iterator : Thing) → (action : Instruction) → Instruction
+  | file_extra_top : (namespace_name : String) → Instruction
 
 def validity_checker (table_name : String) : Thing :=
   Thing.term
@@ -183,8 +201,8 @@ structure DataArrays where
     := Thing.projection expr s!"{table}_delete_weak"
 
 
-def Validity (table_name : String) (id : StrongId table_name id_name) : Thing :=
-  Thing.call (validity_checker table_name) (Thing.list [id.expr])
+def Validity (data : DataArrays) (table_name : String) (id : StrongId table_name id_name) : Thing :=
+  Thing.call (validity_checker table_name) (Thing.list [data.expr, id.expr])
 
 def IsValid (data : DataArrays) (table_name : String) (id : StrongId table_name s!"{table_name}_id") : Instruction :=
   let in_bounds := Thing.and
@@ -219,7 +237,7 @@ def AccessFieldFunc (data : DataArrays) (table_name : String) (id : StrongId tab
     (
       Instruction.program
       [
-        Instruction.assert (Validity table_name id),
+        Instruction.assert (Validity data table_name id),
         Instruction.return_value (data.field table_name field.name id)
       ]
     )
@@ -236,7 +254,7 @@ def ChangeFieldFunc (data : DataArrays) (table_name : String) (id : StrongId tab
     (
       Instruction.program
       [
-        Instruction.assert (Validity table_name id),
+        Instruction.assert (Validity data table_name id),
         Instruction.assignment (data.field table_name field.name id) ValueExpr
       ]
     )
@@ -361,7 +379,7 @@ def DeleteRelationFunc
     (
       Instruction.program (
         [
-          Instruction.assert (Validity table.name id),
+          Instruction.assert (Validity data table.name id),
           Instruction.assignment gen (Thing.inc gen)
         ]
         ++ table.fields.map clear_field
@@ -398,7 +416,7 @@ def CreateRelationFunc
     let link_array := data.link_array table.name link.name link.linked_table
     let link_location_in_array := Thing.index link_array temp_variable
     Instruction.program [
-      Instruction.assert (Validity link.linked_table id),
+      Instruction.assert (Validity data link.linked_table id),
       Instruction.condition_then
         (Thing.exists_in_one_to_one_map ref_map id.internal_id)
         (
@@ -420,7 +438,7 @@ def CreateRelationFunc
     let link_array := data.link_array table.name link.name link.linked_table
     let link_location_in_array := Thing.index link_array temp_variable
     Instruction.program [
-      Instruction.assert (Validity link.linked_table id),
+      Instruction.assert (Validity data link.linked_table id),
       Instruction.set_one_to_many_map ref_map id.internal_id temp_variable,
       Instruction.assignment link_location_in_array id.internal_id
     ]
@@ -509,14 +527,18 @@ def ReserveArraysFunc (data : DataArrays) (table : Table.table) : Instruction :=
       )
     )
 
-def Language := (indent : String) → (i : Instruction) → String
+def Language := (indent_type : String) → (indent : String) → (i : Instruction) → String
 
-def Translate (t: Table.table) (l: Language) : String :=
+def Translate (t: Table.table) (l: Language) (indent_type : String) : String :=
   let state : DataArrays := {}
   let id : StrongId t.name s!"{t.name}_id" := {}
+  -- let local_namespace := Thing.term (GivenName.name [] (t.name |> namespace_name))
+  let l' := l indent_type ""
 
-  let l' := l ""
-
+  l' (Instruction.program [
+    Instruction.file_extra_top (t.name |> namespace_name)
+  ])
+  ++
   l' (Instruction.program [ReserveArraysFunc state t])
   ++
   l' (Instruction.program [IsValidFunc state t.name id])
