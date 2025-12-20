@@ -70,6 +70,8 @@ namespace Language
 
 def god_object_name := "state"
 def validity_check_name := "is_valid"
+def delete_name := "delete"
+def delete_unsafe_name := "delete_unsafe"
 def id_s := "id"
 
 inductive Notion where
@@ -89,7 +91,7 @@ inductive GivenName where
 
 inductive Thing where
   | term : GivenName → Thing
-  | call : Thing → Thing → Thing
+  | call : (function : Thing) → (args : Thing) → Thing
   | index : (array : Thing) → (index: Thing) -> Thing
   | projection : Thing → String → Thing
   | explicit_numerical_value : Int → Thing
@@ -122,7 +124,7 @@ def ValueExpr : Thing := Thing.term ValueName
 inductive Instruction where
   | assert : Thing → Instruction
   | assignment : Thing → Thing → Instruction
-  | local_assignment : Thing → Thing → Instruction
+  | local_assignment : Thing → Thing → SupposedType → Instruction
   | return_value : Thing → Instruction
   | program : List Instruction → Instruction
   | function_declaration :
@@ -152,6 +154,22 @@ def validity_checker (table_name : String) : Thing :=
     GivenName.name
     [namespace_name table_name]
     validity_check_name
+  )
+
+def delete_thing (table_name : String) : Thing :=
+  Thing.term
+  (
+    GivenName.name
+    [namespace_name table_name]
+    delete_name
+  )
+
+def delete_unsafe_thing (table_name : String) : Thing :=
+  Thing.term
+  (
+    GivenName.name
+    [namespace_name table_name]
+    delete_unsafe_name
   )
 
 structure DataArrays where
@@ -194,14 +212,14 @@ structure DataArrays where
   generation (table: String) (id : StrongId table id_name) : Thing
     := Thing.index (generation_array table) (id.internal_id)
 
+  generation_unsafe (table: String) (id : Thing) : Thing
+    := Thing.index (generation_array table) (id)
+
   field (table: String) (field : String) (id : StrongId table id_name) : Thing
     := Thing.index (field_array table field) (id.internal_id)
 
-  delete (table: String) : Thing
-    := Thing.projection expr s!"{table}_delete"
-
-  delete_weak (table: String) : Thing
-    := Thing.projection expr s!"{table}_delete_weak"
+  field_unsafe (table: String) (field : String) (id : Thing) : Thing
+    := Thing.index (field_array table field) (id)
 
 
 def Validity (data : DataArrays) (table_name : String) (id : StrongId table_name id_name) : Thing :=
@@ -291,6 +309,80 @@ def ConvertLinkToFuncInput
     :=
   ⟨ link |> LinkVarName |> GivenName.name [], SupposedType.strong_id link.linked_table ⟩
 
+def DeleteRelationUnsafeFunc
+  (data: DataArrays)
+  (table: Table.table)
+    :
+  Instruction
+    :=
+  let id_name := GivenName.name [] "raw_id"
+  let id_type := SupposedType.pure Pure.id_raw_type
+  let id_expr := Thing.term id_name
+
+  let gen := data.generation_unsafe table.name id_expr
+
+  let clear_field
+    (field : Table.field)
+      :
+    Instruction
+      :=
+    Instruction.assignment (data.field_unsafe table.name field.name id_expr) (Thing.explicit_numerical_value 0)
+
+  let clear_link_one
+    (link : Table.link)
+      :
+    Instruction
+      :=
+    let link_array := data.link_array table.name link.name link.linked_table
+    let link_array_location := Thing.index link_array id_expr
+    Instruction.program [
+      Instruction.remove_from_one_to_one_map
+        (
+          data.reference_one_map
+            link.linked_table
+            (Table.link_to_reference table link)
+        )
+        link_array_location,
+      Instruction.assignment link_array_location (Thing.explicit_numerical_value 0)
+    ]
+
+  let clear_link_many
+    (link : Table.link)
+      :
+    Instruction
+      :=
+    let link_array := data.link_array table.name link.name link.linked_table
+    let link_array_location := Thing.index link_array id_expr
+    Instruction.program [
+      Instruction.remove_from_one_to_many_map
+        (
+          data.reference_many_map
+            link.linked_table
+            (Table.link_to_reference table link)
+        )
+        link_array_location
+        id_expr,
+      Instruction.assignment link_array_location (Thing.explicit_numerical_value 0)
+    ]
+
+  Instruction.function_declaration
+    (GivenName.name [namespace_name table.name] (delete_unsafe_name))
+    (SupposedType.pure Pure.data_type.void)
+    [
+      ⟨ data.self, data.self_t ⟩,
+      ⟨ id_name, id_type ⟩,
+    ]
+    (
+      Instruction.program (
+        [
+          Instruction.assignment gen (Thing.inc gen)
+        ]
+        ++ table.fields.map clear_field
+        ++ table.links_one.map clear_link_one
+        ++ table.links_many.map clear_link_many
+      )
+    )
+
 def DeleteRelationFunc
   (data: DataArrays)
   (table: Table.table)
@@ -335,13 +427,13 @@ def DeleteRelationFunc
     Instruction.program [
       Instruction.remove_from_one_to_many_map
         (
-          data.reference_one_map
+          data.reference_many_map
             link.linked_table
             (Table.link_to_reference table link)
         )
         link_array_location
         id.internal_id,
-      Instruction.assignment (data.link_array table.name link.name link.linked_table) (Thing.explicit_numerical_value 0)
+      Instruction.assignment link_array_location (Thing.explicit_numerical_value 0)
     ]
 
   let clear_ref_one
@@ -352,7 +444,7 @@ def DeleteRelationFunc
     let ref_map := data.reference_one_map table.name ref
     let ref_id := Thing.retrieve_from_one_to_one_map ref_map id.internal_id
     Instruction.trivial_statement
-      ( Thing.call (data.delete ref.referenced_in) ref_id)
+      ( Thing.call (delete_unsafe_thing ref.referenced_in) (Thing.list [(data.expr), ref_id]) )
 
   let clear_ref_many
     (ref : Table.reference)
@@ -363,11 +455,13 @@ def DeleteRelationFunc
     let temp_collection := Thing.term (GivenName.name [] "temp_container")
     let it := Thing.term (GivenName.name [] "iterator")
     Instruction.program [
-      Instruction.local_assignment temp_collection Thing.empty_collection,
+      Instruction.local_assignment temp_collection Thing.empty_collection (Pure.id_raw_type |> SupposedType.pure |> SupposedType.array),
       Instruction.copy_many_map_collection temp_collection ref_map id.internal_id,
       Instruction.for_each temp_collection it (
-        Instruction.trivial_statement
-          ( Thing.call (data.delete_weak ref.referenced_in) it)
+        Instruction.program [
+          Instruction.trivial_statement
+            ( Thing.call (delete_unsafe_thing ref.referenced_in) (Thing.list [data.expr, it]))
+        ]
       )
     ]
 
@@ -428,8 +522,13 @@ def CreateRelationFunc
             Instruction.trivial_statement
             (
               Thing.call
-              (data.delete_weak table.name)
-              (Thing.retrieve_from_one_to_one_map ref_map id.internal_id)
+              (delete_unsafe_thing table.name)
+              (
+              Thing.list [
+                (data.expr),
+                (Thing.retrieve_from_one_to_one_map ref_map id.internal_id)
+              ]
+              )
             )
           ]
         ),
@@ -444,7 +543,7 @@ def CreateRelationFunc
       :=
     let id : StrongId link.linked_table (LinkVarName link) := {}
     let ref := Table.link_to_reference table link
-    let ref_map := data.reference_one_map link.linked_table ref
+    let ref_map := data.reference_many_map link.linked_table ref
     let link_array := data.link_array table.name link.name link.linked_table
     let link_location_in_array := Thing.index link_array temp_variable
     Instruction.program [
@@ -466,7 +565,7 @@ def CreateRelationFunc
     (
       Instruction.program ([
         -- store index
-        Instruction.local_assignment temp_variable available,
+        Instruction.local_assignment temp_variable available (SupposedType.pure (Pure.data_type.number Pure.number_interpretation.unsigned Pure.word_size.w4)),
         -- update usage
         Instruction.assignment usage_count (Thing.explicit_numerical_value 0),
         -- update index
@@ -505,7 +604,7 @@ def ReserveLinkedInOne (data: DataArrays) (table : Table.table) (link : Table.re
   Instruction.reserve_one_to_one_id_map reference_symbol
 
 def ReserveLinkedInMany (data: DataArrays) (table : Table.table) (link : Table.reference) : Instruction :=
-  let reference_symbol := data.reference_one_map table.name link
+  let reference_symbol := data.reference_many_map table.name link
   Instruction.reserve_one_to_many_id_map reference_symbol
 
 def ReserveArraysFunc (data : DataArrays) (table : Table.table) : Instruction :=
@@ -558,12 +657,22 @@ def Translate (t: Table.table) (l: Language) (indent_type : String) : String :=
   l' (Instruction.program (t.fields.map (ChangeFieldFunc state t.name id)))
   ++
   l' (Instruction.program [CreateRelationFunc state t])
+  ++
+  l' (Instruction.program [DeleteRelationFunc state t id])
+  ++
+  l' (Instruction.program [DeleteRelationUnsafeFunc state t])
 
 def field_to_named_type  (t : Table.table) (f : Table.field) : (String × SupposedType) :=
   ⟨ s!"{t.name}_data_{f.name}", SupposedType.array (SupposedType.pure f.column_normal_type) ⟩
 
 def link_to_named_type  (t : Table.table) (l : Table.link) : (String × SupposedType) :=
   ⟨ s!"{t.name}_link_{l.name}_from_{l.linked_table}_table", SupposedType.array (SupposedType.pure Pure.id_raw_type) ⟩
+
+def reference_one_to_named_type (t : Table.table) (r : Table.reference) : (String × SupposedType) :=
+  ⟨ s!"{t.name}_reference_as_unique_{r.referenced_as}_in_{r.referenced_in}_table", SupposedType.array (SupposedType.pure Pure.id_raw_type) ⟩
+
+def reference_many_to_named_type (t : Table.table) (r : Table.reference) : (String × SupposedType) :=
+  ⟨ s!"{t.name}_referenced_as_one_of_{r.referenced_as}_in_{r.referenced_in}_table", SupposedType.array (SupposedType.array (SupposedType.pure Pure.id_raw_type)) ⟩
 
 def GodFields (t : Table.table) : List (String × SupposedType) :=
   [
@@ -578,5 +687,9 @@ def GodFields (t : Table.table) : List (String × SupposedType) :=
   t.links_one.map (link_to_named_type t)
   ++
   t.links_many.map (link_to_named_type t)
+  ++
+  t.references_one.map (reference_one_to_named_type t)
+  ++
+  t.references_many.map (reference_many_to_named_type t)
 
 end Language

@@ -4,11 +4,13 @@
 ---@field location_usage number[]
 ---@field location_generation number[]
 ---@field location_data_danger number[]
+---@field location_referenced_as_one_of_location_in_party_location_table number[][]
 ---@field party_available_id number
 ---@field party_size number
 ---@field party_usage number[]
 ---@field party_generation number[]
 ---@field party_data_count number[]
+---@field party_reference_as_unique_party_in_party_location_table number[]
 ---@field party_location_available_id number
 ---@field party_location_size number
 ---@field party_location_usage number[]

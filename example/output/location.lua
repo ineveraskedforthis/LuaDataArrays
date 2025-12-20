@@ -8,6 +8,7 @@ function LOCATION.reserve(state)
 	state.location_usage = ffi.new("int64_t[?]", state.location_size)
 	state.location_generation = ffi.new("int64_t[?]", state.location_size)
 	state.location_data_danger = ffi.new("float[?]", state.location_size)
+	state.location_referenced_as_one_of_location_in_party_location_table = {  }
 end
 
 ---@param state data_arrays
@@ -41,12 +42,38 @@ end
 ---@param state data_arrays
 ---@returns location_strong_id
 function LOCATION.create(state)
+	---@type number
 	local id = state.location_available_id
+
 	state.location_usage[id] = 0
 	while (0 < state.location_usage[id]) do
 		assert((state.location_available_id < state.location_size))
 		state.location_available_id = (state.location_available_id + 1)
 	end
 	return id + state.location_generation[id] * 4294967296
+end
+
+---@param state data_arrays
+---@param location_id location_strong_id
+function LOCATION.delete(state, location_id)
+	assert(LOCATION.is_valid(state, location_id))
+	state.location_generation[location_id % 4294967296] = (state.location_generation[location_id % 4294967296] + 1)
+	state.location_data_danger[location_id % 4294967296] = 0
+	---@type number[]
+	local temp_container = {  }
+
+	if state.location_referenced_as_one_of_location_in_party_location_table[location_id % 4294967296] then for _, val in ipairs(state.location_referenced_as_one_of_location_in_party_location_table[location_id % 4294967296]) do table.insert(temp_container, val) end end
+	for _, iterator in ipairs(temp_container) do
+		PARTY_LOCATION.delete_unsafe(state, iterator)
+	end
+
+
+end
+
+---@param state data_arrays
+---@param raw_id number
+function LOCATION.delete_unsafe(state, raw_id)
+	state.location_generation[raw_id] = (state.location_generation[raw_id] + 1)
+	state.location_data_danger[raw_id] = 0
 end
 

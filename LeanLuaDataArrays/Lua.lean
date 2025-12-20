@@ -145,7 +145,7 @@ def Signify (t : Thing) : String :=
   | Thing.projection a s => s!"{Signify a}.{s}"
   | Thing.term a => ResolveName a
   | Thing.retrieve_from_one_to_one_map map_ref ind => s!"{Signify map_ref}[{Signify ind}]"
-  | Thing.exists_in_one_to_one_map map_ref ind => s!"{Signify map_ref}[{Signify ind}] != nil"
+  | Thing.exists_in_one_to_one_map map_ref ind => s!"{Signify map_ref}[{Signify ind}] ~= nil"
   -- | Thing.strong_id id gen => s!"ffi.new(\"struct strong_id\", {curly s!"{Signify id}, {Signify gen}"})"
   | Thing.strong_id id gen => s!"{Signify id} + {Signify gen} * {2 ^ 32}"
   | Thing.id_from_strong_id id => s!"{Signify id} % {2 ^ 32}"
@@ -201,7 +201,7 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
 
   | Instruction.assignment a b => s!"{indent}{Signify a} = {Signify b}"
 
-  | Instruction.local_assignment a b => s!"{indent}local {Signify a} = {Signify b}"
+  | Instruction.local_assignment a b desired_type => s!"{indent}---@type {ConvertTypeLua desired_type}\n{indent}local {Signify a} = {Signify b}\n"
 
   | Instruction.function_declaration name out_type params body =>
     match out_type with
@@ -238,7 +238,7 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
   | Instruction.remove_from_one_to_one_map map_ref key =>
     s!"{indent}{Signify map_ref}[{Signify key}] = nil"
   | Instruction.set_one_to_many_map map_ref key value =>
-    s!"{indent}if {Signify map_ref}[{Signify key}] then {Signify map_ref}[{Signify key}][{Signify value}] = value else {Signify map_ref}[{Signify key}] = {curly ""}; {Signify map_ref}[{Signify key}][{Signify value}] = value; end"
+    s!"{indent}if {Signify map_ref}[{Signify key}] then {Signify map_ref}[{Signify key}][{Signify value}] = {Signify value} else {Signify map_ref}[{Signify key}] = {curly ""}; {Signify map_ref}[{Signify key}][{Signify value}] = {Signify value}; end"
   | Instruction.set_one_to_one_map map_ref key value =>
     s!"{indent}{Signify map_ref}[{Signify key}] = {Signify value}"
   | Instruction.loop_while condition program =>
@@ -247,12 +247,12 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
     ++ s!"{indent}end"
 
   | Instruction.for_each collection iterator program =>
-    s!"{indent}for _, {Signify iterator} in ipairs({Signify collection}) do"
+    s!"{indent}for _, {Signify iterator} in ipairs({Signify collection}) do\n"
     ++ Compile tb s!"{indent}{tb}" program
-    ++ s!"{indent}end"
+    ++ s!"{indent}end\n"
 
   | Instruction.copy_many_map_collection target origin key =>
-    s!"{indent}if {Signify origin}[key] then for _, val in ipairs({Signify origin}[{Signify key}]) do table.insert({Signify target}, val) end end"
+    s!"{indent}if {Signify origin}[{Signify key}] then for _, val in ipairs({Signify origin}[{Signify key}]) do table.insert({Signify target}, val) end end"
 
   | Instruction.file_extra_top ns table_name =>
     s!"local ffi = require(\"ffi\")\n---@class {table_name}_strong_id\n---@field is_{table_name} boolean\n{ns} = {curly ""}\n"
