@@ -134,7 +134,7 @@ def Signify (t : Thing) : String :=
     | Bool.true => "true"
     | Bool.false => "false"
   | Thing.explicit_numerical_value a => s!"{a}"
-  | Thing.index a b => s!"{Signify a}[{Signify b}]"
+  | Thing.index a b => s!"{Signify a}[tonumber({Signify b})]"
   | Thing.less a b => s!"({Signify a} < {Signify b})"
   | Thing.less_or_equal a b => s!"({Signify a} <= {Signify b})"
   | Thing.list l =>
@@ -144,8 +144,8 @@ def Signify (t : Thing) : String :=
     | a :: l => s!"{Signify a}, {Signify (Thing.list l)}"
   | Thing.projection a s => s!"{Signify a}.{s}"
   | Thing.term a => ResolveName a
-  | Thing.retrieve_from_one_to_one_map map_ref ind => s!"{Signify map_ref}[{Signify ind}]"
-  | Thing.exists_in_one_to_one_map map_ref ind => s!"{Signify map_ref}[{Signify ind}] ~= nil"
+  | Thing.retrieve_from_one_to_one_map map_ref ind => s!"{Signify map_ref}[tonumber({Signify ind})]"
+  | Thing.exists_in_one_to_one_map map_ref ind => s!"{Signify map_ref}[tonumber({Signify ind})] ~= nil"
   -- | Thing.strong_id id gen => s!"ffi.new(\"struct strong_id\", {curly s!"{Signify id}, {Signify gen}"})"
   | Thing.strong_id id gen => s!"{Signify id} + {Signify gen} * {2 ^ 32}"
   | Thing.id_from_strong_id id => s!"{Signify id} % {2 ^ 32}"
@@ -212,7 +212,7 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
       ++ s!"end\n"
     | _ =>
       ResolveParamTypes params
-      ++ s! "---@returns {ConvertTypeLua out_type}\n"
+      ++ s! "---@return {ConvertTypeLua out_type}\n"
       ++ s!"{indent}function {ResolveName name}({ResolveParams params})\n"
       ++ Compile tb s!"{indent}{tb}" body
       ++ s!"end\n"
@@ -234,13 +234,13 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
   | Instruction.trivial_statement s =>
     s!"{indent}{Signify s}"
   | Instruction.remove_from_one_to_many_map map_ref key value =>
-    s!"{indent}if {Signify map_ref}[{Signify key}] then {Signify map_ref}[{Signify key}][{Signify value}] = nil end"
+    s!"{indent}if {Signify map_ref}[{Signify key}] then {Signify map_ref}[tonumber({Signify key})][tonumber({Signify value})] = nil end"
   | Instruction.remove_from_one_to_one_map map_ref key =>
     s!"{indent}{Signify map_ref}[{Signify key}] = nil"
   | Instruction.set_one_to_many_map map_ref key value =>
-    s!"{indent}if {Signify map_ref}[{Signify key}] then {Signify map_ref}[{Signify key}][{Signify value}] = {Signify value} else {Signify map_ref}[{Signify key}] = {curly ""}; {Signify map_ref}[{Signify key}][{Signify value}] = {Signify value}; end"
+    s!"{indent}if {Signify map_ref}[{Signify key}] then {Signify map_ref}[tonumber({Signify key})][tonumber({Signify value})] = {Signify value} else {Signify map_ref}[tonumber({Signify key})] = {curly ""}; {Signify map_ref}[tonumber({Signify key})][tonumber({Signify value})] = {Signify value}; end"
   | Instruction.set_one_to_one_map map_ref key value =>
-    s!"{indent}{Signify map_ref}[{Signify key}] = {Signify value}"
+    s!"{indent}{Signify map_ref}[tonumber({Signify key})] = {Signify value}"
   | Instruction.loop_while condition program =>
     s!"{indent}while {Signify condition} do\n"
     ++ Compile tb s!"{indent}{tb}" program
@@ -252,7 +252,7 @@ def Compile (tb : String) (indent : String) (i : Instruction) : String :=
     ++ s!"{indent}end\n"
 
   | Instruction.copy_many_map_collection target origin key =>
-    s!"{indent}if {Signify origin}[{Signify key}] then for _, val in ipairs({Signify origin}[{Signify key}]) do table.insert({Signify target}, val) end end"
+    s!"{indent}if {Signify origin}[tonumber({Signify key})] then for _, val in ipairs({Signify origin}[tonumber({Signify key})]) do table.insert({Signify target}, val) end end"
 
   | Instruction.file_extra_top ns table_name =>
     s!"local ffi = require(\"ffi\")\n---@class {table_name}_strong_id\n---@field is_{table_name} boolean\n{ns} = {curly ""}\n"
