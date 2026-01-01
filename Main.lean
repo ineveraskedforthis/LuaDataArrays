@@ -169,13 +169,13 @@ def empty_table (t : Option Table.table) : Bool :=
   | none => false
   | some _ => true
 
-def retrieve_field_description (t : IO (Option Table.table)) : IO (List (String × Language.SupposedType)) := do
-  let t' ← t
-  match t' with
-  | none => pure []
-  | some table => pure (Language.GodFields table)
+def retrieve_field_description (t : Option Table.table) : List (String × Language.SupposedType) :=
+  match t with
+  | none => []
+  | some table => (Language.GodFields table)
 
-
+-- def IO_map  (f: α → β) (x : IO α) : IO β := bind x (pure ∘ f)
+-- #check Monad.toApplicative.map
 
 def main (args : List String) : IO UInt32 := do
   IO.println s!"Generating Lua code"
@@ -190,7 +190,7 @@ def main (args : List String) : IO UInt32 := do
     let god_fields ←
       local_files
       |>.map (entry_to_table main_folder)
-      |>.map retrieve_field_description
+      |>.map (Monad.toApplicative.map retrieve_field_description)
       |>.toList
       |> merge_IO_lists
 
